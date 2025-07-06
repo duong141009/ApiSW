@@ -1,0 +1,15 @@
+{
+  "name": "sundudoan",
+  "version": "1.0.0",
+  "main": "sundudoan.js",
+  "scripts": {
+    "start": "node sundudoan.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^8.2.1",
+    "@fastify/websocket": "^9.0.2",
+    "fastify": "^4.22.2",
+    "sqlite3": "^5.1.6",
+    "ws": "^8.13.0"
+  }
+}
