@@ -47,15 +47,27 @@ fastify.get("/favicon.ico", async (request, reply) => {
 });
 
 // WebSocket Sunwin
+
 let ws = null;
+let pingInterval = null;
 
 function connectWebSocket() {
   ws = new WebSocket(`wss://websocket.azhkthg1.net/websocket?token=${TOKEN}`);
 
   ws.on("open", () => {
     console.log("✅ Đã kết nối WebSocket Sunwin");
+
+    // Gửi xác thực đăng ký nhận dữ liệu
     const authPayload = [101, "sub", "taixiu.history"];
     ws.send(JSON.stringify(authPayload));
+
+    // Gửi ping giữ kết nối mỗi 10 giây
+    if (pingInterval) clearInterval(pingInterval);
+    pingInterval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send("ping");
+      }
+    }, 10000);
   });
 
   ws.on("message", (data) => {
@@ -80,6 +92,7 @@ function connectWebSocket() {
 
   ws.on("close", () => {
     console.log("⚠️ WebSocket đóng, thử kết nối lại sau 5 giây...");
+    clearInterval(pingInterval);
     setTimeout(connectWebSocket, 5000);
   });
 
@@ -87,80 +100,3 @@ function connectWebSocket() {
     console.error("❌ Lỗi WebSocket:", err.message);
   });
 }
-
-// API: Kết quả mới nhất
-fastify.get("/api/sunwin", async (request, reply) => {
-  if (request.query.key !== API_KEY) {
-    return reply.code(403).send({ error: "Invalid API key" });
-  }
-
-  const rows = await new Promise((resolve) => {
-    db.all("SELECT * FROM sessions ORDER BY sid DESC LIMIT 1", (err, rows) => {
-      resolve(rows || []);
-    });
-  });
-
-  if (rows.length === 0) {
-    return { error: "No data available" };
-  }
-
-  const last = rows[0];
-
-  return {
-    phien_cu: last.sid,
-    ket_qua: last.result,
-    xuc_xac: [last.d1, last.d2, last.d3],
-    phien_moi: last.sid + 1
-  };
-});
-
-// API: Lịch sử
-fastify.get("/api/history", async (request, reply) => {
-  if (request.query.key !== API_KEY) {
-    return reply.code(403).send({ error: "Invalid API key" });
-  }
-
-  const limit = Math.min(parseInt(request.query.limit) || 50, 100);
-  const rows = await new Promise((resolve) => {
-    db.all("SELECT * FROM sessions ORDER BY sid DESC LIMIT ?", [limit], (err, rows) => {
-      resolve(rows || []);
-    });
-  });
-
-  return rows;
-});
-
-// WebSocket endpoint cho client
-fastify.get("/api/sunwin/taixiu/ws", { websocket: true }, (connection) => {
-  connection.socket.on("message", (message) => {
-    console.log("Client WebSocket gửi:", message.toString());
-  });
-});
-
-// Tạo bảng và khởi động server
-const start = async () => {
-  try {
-    await new Promise((resolve) => {
-      db.run(`
-        CREATE TABLE IF NOT EXISTS sessions (
-          sid INTEGER PRIMARY KEY,
-          d1 INTEGER NOT NULL,
-          d2 INTEGER NOT NULL,
-          d3 INTEGER NOT NULL,
-          total INTEGER NOT NULL,
-          result TEXT NOT NULL,
-          timestamp INTEGER NOT NULL
-        )
-      `, resolve);
-    });
-
-    connectWebSocket();
-    await fastify.listen({ port: PORT, host: "0.0.0.0" });
-    console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
-  } catch (err) {
-    console.error("❌ Lỗi khởi động server:", err);
-    process.exit(1);
-  }
-};
-
-start();
