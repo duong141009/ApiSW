@@ -2,10 +2,8 @@ const Fastify = require("fastify");
 const WebSocket = require("ws");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
-const fs = require("fs");
 const fastifyWebsocket = require("@fastify/websocket");
 
-// Cấu hình
 const TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhbW91bnQiOjB9.p56b5g73I9wyoVu4db679bOvVeFJWVjGDg_ulBXyav8";
 const API_KEY = "duongd";
 const PORT = process.env.PORT || 4000;
@@ -14,19 +12,32 @@ const fastify = Fastify({ logger: false });
 fastify.register(require("@fastify/cors"), { origin: true });
 fastify.register(fastifyWebsocket);
 
-// Kết nối SQLite
 const dbPath = path.resolve(__dirname, "sun.sql");
 const db = new sqlite3.Database(dbPath);
 
-// Route gốc
+// ✅ Route / hiển thị luôn kết quả mới nhất
 fastify.get("/", async (request, reply) => {
+  const row = await new Promise((resolve) => {
+    db.get("SELECT * FROM sessions ORDER BY sid DESC LIMIT 1", (err, row) => {
+      resolve(row || null);
+    });
+  });
+
   return {
     status: "Sunwin API đang hoạt động",
     endpoints: [
       "/api/sunwin?key=duongd",
       "/api/history?key=duongd&limit=10",
       "/api/sunwin/taixiu/ws (WebSocket)"
-    ]
+    ],
+    ket_qua_moi_nhat: row
+      ? {
+          phien_cu: row.sid,
+          ket_qua: row.result,
+          xuc_xac: [row.d1, row.d2, row.d3],
+          phien_moi: row.sid + 1
+        }
+      : "Chưa có dữ liệu"
   };
 });
 
@@ -35,14 +46,14 @@ fastify.get("/favicon.ico", async (request, reply) => {
   reply.code(204).send();
 });
 
-// Kết nối WebSocket đến Sunwin
+// WebSocket Sunwin
 let ws = null;
 
 function connectWebSocket() {
   ws = new WebSocket(`wss://websocket.azhkthg1.net/websocket?token=${TOKEN}`);
 
   ws.on("open", () => {
-    console.log("Đã kết nối WebSocket Sunwin");
+    console.log("✅ Đã kết nối WebSocket Sunwin");
     const authPayload = [101, "sub", "taixiu.history"];
     ws.send(JSON.stringify(authPayload));
   });
@@ -68,16 +79,16 @@ function connectWebSocket() {
   });
 
   ws.on("close", () => {
-    console.log("WebSocket đóng, thử kết nối lại sau 5 giây...");
+    console.log("⚠️ WebSocket đóng, thử kết nối lại sau 5 giây...");
     setTimeout(connectWebSocket, 5000);
   });
 
   ws.on("error", (err) => {
-    console.error("Lỗi WebSocket:", err.message);
+    console.error("❌ Lỗi WebSocket:", err.message);
   });
 }
 
-// API: Kết quả gần nhất
+// API: Kết quả mới nhất
 fastify.get("/api/sunwin", async (request, reply) => {
   if (request.query.key !== API_KEY) {
     return reply.code(403).send({ error: "Invalid API key" });
@@ -119,19 +130,19 @@ fastify.get("/api/history", async (request, reply) => {
   return rows;
 });
 
-// WebSocket API
+// WebSocket endpoint cho client
 fastify.get("/api/sunwin/taixiu/ws", { websocket: true }, (connection) => {
   connection.socket.on("message", (message) => {
     console.log("Client WebSocket gửi:", message.toString());
   });
 });
 
-// Tạo bảng và khởi động
+// Tạo bảng và khởi động server
 const start = async () => {
   try {
     await new Promise((resolve) => {
-      db.run(
-        `CREATE TABLE IF NOT EXISTS sessions (
+      db.run(`
+        CREATE TABLE IF NOT EXISTS sessions (
           sid INTEGER PRIMARY KEY,
           d1 INTEGER NOT NULL,
           d2 INTEGER NOT NULL,
@@ -139,16 +150,15 @@ const start = async () => {
           total INTEGER NOT NULL,
           result TEXT NOT NULL,
           timestamp INTEGER NOT NULL
-        )`,
-        resolve
-      );
+        )
+      `, resolve);
     });
 
     connectWebSocket();
     await fastify.listen({ port: PORT, host: "0.0.0.0" });
-    console.log(`Server đang chạy tại http://localhost:${PORT}`);
+    console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
   } catch (err) {
-    console.error("Lỗi khi khởi động server:", err);
+    console.error("❌ Lỗi khởi động server:", err);
     process.exit(1);
   }
 };
