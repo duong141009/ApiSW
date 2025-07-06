@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^8.2.1",
-    "@fastify/websocket": "^9.0.2",
+    "@fastify/websocket": "^8.0.1",     // ✅ Đã sửa version
     "fastify": "^4.22.2",
     "sqlite3": "^5.1.6",
     "ws": "^8.13.0"
